@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Hypoglycemia AI Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<div class="navbar">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/history-page">History</a>
+    <a href="/logout">Logout</a>
+</div>
+
+<div class="dashboard">
+
+<h1 class="title">🧠 Hypoglycemia AI Monitoring System</h1>
+
+<div class="main">
+
+<!-- INPUT CARD -->
+<div class="card">
+<h3>Enter Details</h3>
+
+<input type="number" id="glucose" placeholder="Glucose Level">
+<input type="number" id="hours" placeholder="Hours Since Meal">
+<input type="number" id="insulin" placeholder="Hours Since Insulin">
+
+<select id="activity">
+<option value="low">Low Activity</option>
+<option value="medium">Medium Activity</option>
+<option value="high">High Activity</option>
+</select>
+
+<button onclick="predict()">Predict</button>
+</div>
+
+<!-- RESULT CARD -->
+<div class="card">
+<h3>Result</h3>
+
+<h2 id="result"></h2>
+<p id="score"></p>
+<p id="suggestion"></p>
+<p id="food"></p>
+<p id="confidence"></p>
+<div id="insightBox" style="margin-top:10px; font-size:14px; color:#9be7ff;"></div>
+
+<div class="progress-bg">
+<div id="progressBar"></div>
+</div>
+
+<div id="alertBox"></div>
+<div id="emergencyBox" style="margin-top:10px;"></div>
+
+<button onclick="downloadReport()">Download Report</button>
+</div>
+
+<!-- CHART CARD -->
+<div class="card">
+<h3>📊 Glucose Trend</h3>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+</div>
+
+<script>
+function speak(text){
+    let speech = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(speech);
+}
+
+let chart;
+
+function predict(){
+
+let glucose = document.getElementById("glucose").value;
+let hours = document.getElementById("hours").value;
+let insulin = document.getElementById("insulin").value;
+let activity = document.getElementById("activity").value;
+
+fetch("/predict", {
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body: JSON.stringify({glucose, hours, insulin, activity})
+})
+.then(res => res.json())
+.then(data => {
+
+document.getElementById("result").innerText = data.result;
+document.getElementById("score").innerText = "Risk Score: " + data.score + "%";
+document.getElementById("suggestion").innerText = data.suggestion;
+document.getElementById("food").innerText = "🍎 Food: " + data.food;
+// ✅ Show AI confidence
+document.getElementById("confidence").innerText =
+    "AI Confidence: " + data.confidence + "%";
+
+// ✅ Show AI Insight
+let insightHTML = "<b>🧠 AI Insight:</b><ul>";
+data.insight.forEach(i => {
+    insightHTML += "<li>" + i + "</li>";
+});
+insightHTML += "</ul>";
+
+document.getElementById("insightBox").innerHTML = insightHTML;
+
+
+
+speak(data.result + ". " + data.suggestion);
+
+let bar = document.getElementById("progressBar");
+bar.style.width = data.score + "%";
+
+// ✅ USE BACKEND RESULT ONLY
+let alertBox = document.getElementById("alertBox");
+
+// 🎨 only colors based on score
+if(data.score > 75){
+    bar.style.background = "#ff4d4d";
+    alertBox.style.color = "#ff4d4d";
+}
+else if(data.score > 40){
+    bar.style.background = "#ffa726";
+    alertBox.style.color = "#ffa726";
+}
+else{
+    bar.style.background = "#00e676";
+    alertBox.style.color = "#00e676";
+}
+
+// update chart safely
+if(data.history){
+    updateChart(data.history);
+}
+
+// emergency buttons
+let emergencyBox = document.getElementById("emergencyBox");
+if(data.result.startsWith("HIGH")){
+    emergencyBox.innerHTML = `
+        <button onclick="callEmergency()" style="background:#ff1744;">
+            📞 Call Emergency
+        </button>
+        <button onclick="sendAlert()" style="background:#ff9100; margin-top:8px;">
+            📩 Send Alert
+        </button>
+    `;
+}else{
+    emergencyBox.innerHTML = "";
+}
+
+});
+}
+
+function updateChart(history){
+
+let ctx = document.getElementById("chart");
+
+if(chart) chart.destroy();
+
+let labels = history.map(h => h.time);
+let glucoseValues = history.map(h => h.glucose);
+
+chart = new Chart(ctx,{
+type:"line",
+data:{
+labels: labels,
+datasets:[{
+label:"Glucose Level",
+data: glucoseValues,
+borderColor:"red",
+fill:false
+}]
+}
+});
+}
+
+function analyzeTrend(history){
+if(history.length < 5) return "Not enough data for trend";
+
+let values = history.slice(-20).map(h => h.glucose);
+
+let first = values[0];
+let last = values[values.length-1];
+
+if(last - first > 15) return "Glucose trend is Rising over time.";
+if(first - last > 15) return "Glucose trend is Falling over time.";
+return "Glucose trend is Stable.";
+}
+
+function getChartImage(){
+    let canvas = document.getElementById("chart");
+    return canvas.toDataURL("image/png");
+}
+
+function downloadReport(){
+
+fetch("/history")
+.then(res => res.json())
+.then(history => {
+
+let result = document.getElementById("result").innerText;
+let score = document.getElementById("score").innerText;
+let suggestion = document.getElementById("suggestion").innerText;
+let food = document.getElementById("food").innerText;
+
+let trend = analyzeTrend(history);
+let chartImage = getChartImage();
+
+let reportHTML = `
+<html>
+<head>
+<title>Hypoglycemia Report</title>
+<style>
+body{
+    font-family: Arial;
+    padding:20px;
+}
+h1{color:#0b79d0;}
+img{
+    width:100%;
+    margin-top:20px;
+    border:1px solid #ccc;
+}
+</style>
+</head>
+<body>
+
+<h1>Hypoglycemia AI — Monthly Report</h1>
+
+<h3>Latest Result</h3>
+<p><b>${result}</b></p>
+<p>${score}</p>
+<p>${suggestion}</p>
+<p>${food}</p>
+
+<h3>30-Day Trend Analysis</h3>
+<p>${trend}</p>
+
+<h3>Glucose Trend Graph</h3>
+<img src="${chartImage}" />
+
+<p>Generated on: ${new Date().toLocaleString()}</p>
+
+</body>
+</html>
+`;
+
+let blob = new Blob([reportHTML], {type:"text/html"});
+let a = document.createElement("a");
+a.href = URL.createObjectURL(blob);
+a.download = "Hypoglycemia_Report.html";
+a.click();
+
+});
+}
+
+function callEmergency(){
+window.location.href = "tel:112";
+}
+
+function sendAlert(){
+let message = "🚨 High Risk Hypoglycemia detected! Immediate attention needed.";
+window.location.href = "sms:?body=" + encodeURIComponent(message);
+}
+
+window.onload = function(){
+fetch("/history")
+.then(res => res.json())
+.then(data => {
+    if(data.length) updateChart(data);
+});
+}
+</script>
+
+</body>
+</html>

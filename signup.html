@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Signup | Hypoglycemia AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="card" style="margin:auto; margin-top:120px; max-width:350px;">
+
+    <h2 style="text-align:center;">📝 Create Account</h2>
+
+    <form method="POST" action="/signup">
+        <input type="text" name="username" placeholder="Choose Username" required>
+        <input type="password" name="password" placeholder="Choose Password" required>
+
+        <button type="submit">Signup</button>
+    </form>
+
+    <p style="text-align:center; margin-top:15px;">
+        Already have an account?
+        <a href="/" style="color:#00e5ff;">Login</a>
+    </p>
+
+</div>
+
+</body>
+</html>
